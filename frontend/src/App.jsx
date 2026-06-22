@@ -9,6 +9,7 @@ import HistoryView from "./components/HistoryView.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { furnishRoom } from "./api/furnish.js";
 import { renderFurnished } from "./api/render.js";
+import { shuffleListing } from "./api/listings.js";
 
 const HAS_CLERK = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -37,6 +38,9 @@ const CSS = `
   @keyframes pulse   { 0%,100% { transform:translate(-50%,-50%) scale(1); opacity:1; } 50% { transform:translate(-50%,-50%) scale(1.5); opacity:0.55; } }
   @keyframes panelIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
   @keyframes sheetIn { from { transform:translateY(100%); } to { transform:translateY(0); } }
+  @keyframes stepIn  { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:none; } }
+  @keyframes checkPop { from { transform:scale(0) rotate(-45deg); opacity:0; } to { transform:scale(1) rotate(0deg); opacity:1; } }
+  @keyframes shimmer { from { background-position:-200% 0; } to { background-position:200% 0; } }
 
   *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
   ::-webkit-scrollbar { display:none; }
@@ -82,6 +86,7 @@ export default function App() {
   const [rendering, setRendering] = useState(false);
   const [usage, setUsage] = useState(null);
   const [authMode, setAuthMode] = useState("sign-in"); // sign-in | sign-up
+  const [shufflingSlot, setShufflingSlot] = useState(null); // slotId being shuffled
 
   // Redirect to auth if Clerk is configured and user isn't signed in
   const needsAuth = HAS_CLERK && clerkUser.isLoaded && !clerkUser.isSignedIn;
@@ -134,11 +139,73 @@ export default function App() {
   const reset = () => {
     setPhotos([]); setRoomData(null); setActiveId(null);
     setError(null); setRenderedUrl(null); setRendering(false);
-    setScreen("upload");
+    setShufflingSlot(null); setScreen("upload");
   };
 
   const activeHotspot = roomData?.slots?.find(s => s.id === activeId) ?? null;
   const toggleHotspot = id => setActiveId(prev => prev === id ? null : id);
+
+  // Keyboard navigation on render screen
+  useEffect(() => {
+    if (screen !== "render" || !roomData?.slots?.length) return;
+    const slots = roomData.slots;
+    const handler = e => {
+      if (["ArrowRight", "ArrowDown"].includes(e.key)) {
+        e.preventDefault();
+        const idx = slots.findIndex(s => s.id === activeId);
+        setActiveId(slots[(idx + 1) % slots.length].id);
+      } else if (["ArrowLeft", "ArrowUp"].includes(e.key)) {
+        e.preventDefault();
+        const idx = slots.findIndex(s => s.id === activeId);
+        setActiveId(slots[(idx - 1 + slots.length) % slots.length].id);
+      } else if (e.key === "Escape") {
+        setActiveId(null);
+      } else if (e.key >= "1" && e.key <= "9") {
+        const n = parseInt(e.key, 10) - 1;
+        if (slots[n]) setActiveId(slots[n].id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [screen, roomData, activeId]);
+
+  const handleShuffle = async (slotId, category) => {
+    if (shufflingSlot) return;
+    setShufflingSlot(slotId);
+    try {
+      const token = await clerkAuth.getToken();
+      const excludeUrls = (roomData?.slots || [])
+        .map(s => s.listing?.listing_url)
+        .filter(Boolean);
+      const newListing = await shuffleListing({
+        category,
+        city,
+        styleTags: roomData?.styleTags || [],
+        excludeUrls,
+        token,
+      });
+      setRoomData(prev => ({
+        ...prev,
+        slots: prev.slots.map(s => s.id === slotId ? { ...s, listing: newListing } : s),
+      }));
+    } catch {
+      // silently fail — DB might not have more options
+    } finally {
+      setShufflingSlot(null);
+    }
+  };
+
+  const downloadRender = () => {
+    if (!renderedUrl) return;
+    const a = document.createElement("a");
+    a.href = renderedUrl;
+    a.download = "furnished-room.png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const totalCents = (roomData?.slots || []).reduce((sum, s) => sum + (s.listing?.price || 0), 0);
 
   if (!clerkUser.isLoaded) {
     return (
@@ -226,21 +293,36 @@ export default function App() {
 
       {/* Upload */}
       {screen === "upload" && (
-        <main style={{ maxWidth:600, margin:"0 auto", padding:"56px 24px", animation:"fadeIn 0.4s ease" }}>
-          <div style={{ textAlign:"center", marginBottom:44 }}>
+        <main style={{ maxWidth:580, margin:"0 auto", padding:"52px 24px 64px", animation:"fadeIn 0.4s ease" }}>
+          <div style={{ textAlign:"center", marginBottom:40 }}>
             <h1 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"clamp(2.2rem,5vw,3.2rem)", fontWeight:700, color:"#1a1208", lineHeight:1.1, marginBottom:14, letterSpacing:"-0.02em" }}>
               See your room,<br /><span style={{ color:"#b08d6e" }}>already furnished.</span>
             </h1>
-            <p style={{ fontSize:"0.92rem", color:"#7a6a58", maxWidth:420, margin:"0 auto", lineHeight:1.65 }}>
-              Upload a photo of your empty room. AI picks real secondhand furniture from Mercari and OfferUp and shows you exactly where each piece goes.
+            <p style={{ fontSize:"0.88rem", color:"#7a6a58", maxWidth:400, margin:"0 auto", lineHeight:1.7 }}>
+              Drop a photo of your empty room. AI designs it with real secondhand pieces from Mercari &amp; OfferUp — with prices and links.
             </p>
           </div>
+
           <UploadZone onFile={addPhoto} />
-          <div style={{ textAlign:"center", marginTop:12, fontSize:"0.7rem", color:"#b0a090" }}>JPG · PNG · HEIC · up to 4 angles</div>
+
+          {/* How it works */}
+          <div style={{ marginTop:44, display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+            {[
+              { n:"1", title:"Upload your room", desc:"Empty bedroom, living room, or office — any angle works" },
+              { n:"2", title:"AI furnishes it", desc:"GPT-4o picks pieces that match your style & dimensions" },
+              { n:"3", title:"Shop for real", desc:"Every item links to a live listing on Mercari or OfferUp" },
+            ].map(s => (
+              <div key={s.n} style={{ textAlign:"center", padding:"18px 10px", background:"#faf7f4", borderRadius:14 }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", background:"#f0e8e0", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 10px", fontFamily:"'Cormorant Garamond',serif", fontWeight:700, fontSize:"1rem", color:"#b08d6e" }}>{s.n}</div>
+                <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:"0.75rem", fontWeight:600, color:"#1a1208", marginBottom:4 }}>{s.title}</div>
+                <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:"0.68rem", color:"#9e8e7e", lineHeight:1.55 }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
 
           {!HAS_CLERK && (
-            <div style={{ marginTop:32, textAlign:"center", fontSize:"0.75rem", color:"#b0a090", background:"#faf7f4", borderRadius:10, padding:"10px 16px" }}>
-              Running in dev mode — auth disabled
+            <div style={{ marginTop:24, textAlign:"center", fontSize:"0.72rem", color:"#b0a090", background:"#faf7f4", borderRadius:10, padding:"8px 16px" }}>
+              Dev mode — auth disabled
             </div>
           )}
         </main>
@@ -294,16 +376,7 @@ export default function App() {
 
       {/* Loading */}
       {screen === "loading" && (
-        <main style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"80px 24px", animation:"fadeIn 0.3s ease" }}>
-          <Spinner size={38} />
-          <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.25rem", color:"#5a4a3a", marginBottom:6, marginTop:24 }}>Reading your room…</div>
-          <div style={{ fontSize:"0.8rem", color:"#b0a090" }}>{photos.length} photo{photos.length > 1 ? "s" : ""} · {city || "any city"}</div>
-          <div style={{ marginTop:24, maxWidth:320, textAlign:"center" }}>
-            {["Analyzing space dimensions…", "Matching your style…", "Finding real listings nearby…"].map((step, i) => (
-              <div key={i} style={{ fontSize:"0.76rem", color:"#c0b09c", marginBottom:6, opacity: i === 0 ? 1 : 0.5 }}>{step}</div>
-            ))}
-          </div>
-        </main>
+        <LoadingScreen photos={photos} city={city} />
       )}
 
       {/* Render screen */}
@@ -322,6 +395,20 @@ export default function App() {
                 </span>
               ))}
             </div>
+            {/* Total cost */}
+            {totalCents > 0 && (
+              <span style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1rem", fontWeight:700, color:"#1a1208", flexShrink:0, whiteSpace:"nowrap" }}>
+                ${Math.round(totalCents / 100).toLocaleString()}
+              </span>
+            )}
+            {/* Download button */}
+            {renderedUrl && (
+              <button
+                onClick={downloadRender}
+                title="Download furnished render"
+                style={{ width:32, height:32, borderRadius:8, background:"#f5ede4", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.9rem", flexShrink:0 }}
+              >↓</button>
+            )}
             <button onClick={reset} style={{ background:"none", border:"1px solid #e0d8cf", borderRadius:8, padding:"5px 12px", fontSize:"0.73rem", color:"#7a6a58", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", flexShrink:0 }}>
               New room
             </button>
@@ -344,7 +431,13 @@ export default function App() {
                 <div className="listing-panel-backdrop" onClick={() => setActiveId(null)} />
                 <div className="listing-panel">
                   {/* key resets internal imgIdx when hotspot changes */}
-                  <ListingPanel key={activeHotspot.id} hotspot={activeHotspot} onClose={() => setActiveId(null)} />
+                  <ListingPanel
+                    key={activeHotspot.id}
+                    hotspot={activeHotspot}
+                    onClose={() => setActiveId(null)}
+                    onShuffle={handleShuffle}
+                    shuffling={shufflingSlot === activeHotspot.id}
+                  />
                 </div>
               </>
             )}
@@ -501,6 +594,86 @@ function RoomRender({ photo, renderedUrl, rendering, slots, activeId, onHotspotC
         </div>
       )}
     </div>
+  );
+}
+
+function LoadingScreen({ photos, city }) {
+  const [step, setStep] = useState(0);
+  const STEPS = [
+    "Analyzing dimensions & lighting…",
+    "Identifying your interior style…",
+    "Selecting furniture pieces…",
+    "Finding real listings nearby…",
+  ];
+
+  useEffect(() => {
+    const timers = STEPS.slice(1).map((_, i) =>
+      setTimeout(() => setStep(i + 1), (i + 1) * 1900)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <main style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"calc(100vh - 56px)", gap:0, padding:"40px 24px", animation:"fadeIn 0.35s ease" }}>
+      {/* Room photo with spinner ring */}
+      <div style={{ position:"relative", marginBottom:28 }}>
+        <div style={{ width:88, height:88, borderRadius:"50%", overflow:"hidden", border:"3px solid #ede6dc", flexShrink:0 }}>
+          {photos[0]
+            ? <img src={photos[0].previewUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+            : <div style={{ width:"100%", height:"100%", background:"#f0e8e0" }} />
+          }
+        </div>
+        {/* Rotating arc ring */}
+        <div style={{
+          position:"absolute", inset:-5,
+          borderRadius:"50%",
+          border:"2.5px solid transparent",
+          borderTopColor:"#b08d6e",
+          borderRightColor:"rgba(176,141,110,0.4)",
+          animation:"spin 1s linear infinite",
+          pointerEvents:"none",
+        }} />
+      </div>
+
+      <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.5rem", fontWeight:600, color:"#1a1208", marginBottom:24, letterSpacing:"-0.01em" }}>
+        Furnishing your room…
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:300 }}>
+        {STEPS.map((s, i) => {
+          const done = i < step;
+          const active = i === step;
+          return (
+            <div
+              key={i}
+              style={{
+                display:"flex", alignItems:"center", gap:12,
+                opacity: i <= step ? 1 : 0.28,
+                transition:"opacity 0.5s ease",
+                animation: active ? "stepIn 0.4s ease" : "none",
+              }}
+            >
+              <div style={{
+                width:20, height:20, borderRadius:"50%", flexShrink:0,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                background: done ? "#b08d6e" : active ? "#1a1208" : "#ede6dc",
+                transition:"background 0.35s ease",
+              }}>
+                {done && <span style={{ color:"#fff", fontSize:"0.55rem", animation:"checkPop 0.3s ease" }}>✓</span>}
+                {active && <div style={{ width:6, height:6, borderRadius:"50%", background:"#b08d6e" }} />}
+              </div>
+              <div style={{ fontSize:"0.82rem", color: i <= step ? "#3a2e22" : "#c0b09c", fontFamily:"'DM Sans',sans-serif", transition:"color 0.4s" }}>
+                {s}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop:32, fontSize:"0.7rem", color:"#c0b09c" }}>
+        {city || "any city"} · usually 10–20s
+      </div>
+    </main>
   );
 }
 

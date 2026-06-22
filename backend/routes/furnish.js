@@ -13,8 +13,8 @@ const SYSTEM = `You are an interior design AI. Analyze the room photo(s) and ret
 "roomDescription": 1-2 sentences describing floors, walls, light, size.
 "dimensions": "small" | "medium" | "large"
 "styleTags": array of 3-5 from: warm wood, minimalist, traditional, contemporary, mid-century, bohemian, industrial, scandinavian, coastal, rustic
-"slots": array of exactly 6 objects, each with:
-  "id": "item_0" through "item_5"
+"slots": array of furniture items — 4 for small rooms, 5 for medium, 6 for large. No duplicate categories. Each object:
+  "id": "item_0" through "item_N"
   "label": short furniture label (e.g. "Sectional sofa")
   "category": one of: sofa, sectional, armchair, coffee table, dining table, side table, floor lamp, table lamp, dresser, credenza, bookshelf, media console, area rug
   "placement": 1 sentence placement note
@@ -33,7 +33,7 @@ const SYSTEM = `You are an interior design AI. Analyze the room photo(s) and ret
     "listing_url": "#"
   }
 
-Spread hotspots spatially across the image. Place rugs low-center, lamps in corners, sofas along walls.`;
+Rules: spread hotspots spatially — no two dots within 15% of each other. Place rugs low-center (y>70), lamps in corners (x<15 or x>85), sofas along walls (y>55). Each category used at most once.`;
 
 furnishRouter.post("/", requireAuth, requireUsage, async (req, res) => {
   const { images, city } = req.body;

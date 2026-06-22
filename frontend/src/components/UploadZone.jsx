@@ -19,30 +19,74 @@ export default function UploadZone({ onFile, compact = false }) {
 
   if (compact) return (
     <div {...zone} onClick={() => ref.current.click()} style={{
-      width: 110, height: 110, border: `2px dashed ${drag ? "#b08d6e" : "#d9cfc7"}`,
-      borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center",
-      justifyContent: "center", cursor: "pointer", background: drag ? "#fdf8f4" : "#faf7f4",
-      transition: "all 0.2s", userSelect: "none",
+      width: 110, height: 110,
+      border: `2px dashed ${drag ? "#b08d6e" : "#d9cfc7"}`,
+      borderRadius: 14, display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", cursor: "pointer",
+      background: drag ? "#fdf8f4" : "#faf7f4",
+      transition: "all 0.18s", userSelect: "none",
     }}>
-      <div style={{ fontSize: "1.8rem", color: "#b08d6e", lineHeight: 1 }}>+</div>
-      <div style={{ fontSize: "0.68rem", color: "#9e8e7e", marginTop: 4 }}>Add angle</div>
+      <div style={{ width:28, height:28, borderRadius:"50%", background:"#f0e8e0", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:6, fontSize:"1rem" }}>+</div>
+      <div style={{ fontSize: "0.66rem", color: "#9e8e7e", fontFamily:"'DM Sans',sans-serif" }}>Add angle</div>
       <input ref={ref} type="file" accept="image/*,image/heic,image/heif" style={{ display: "none" }} onChange={e => handle(e.target.files[0])} />
     </div>
   );
 
   return (
-    <div {...zone} onClick={() => ref.current.click()} style={{
-      border: `2px dashed ${drag ? "#b08d6e" : "#d9cfc7"}`, borderRadius: 20,
-      padding: "60px 40px", textAlign: "center", cursor: "pointer",
-      background: drag ? "#fdf8f4" : "#faf7f4", transition: "all 0.2s", userSelect: "none",
-    }}>
-      <div style={{ fontSize: "3rem", marginBottom: 16 }}>🛋</div>
-      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.5rem", color: "#2c2016", marginBottom: 8, fontWeight: 600 }}>
-        Drop your room photo here
+    <div
+      {...zone}
+      onClick={() => ref.current.click()}
+      style={{
+        border: `1.5px dashed ${drag ? "#b08d6e" : "#d4c9be"}`,
+        borderRadius: 20,
+        padding: "48px 40px",
+        textAlign: "center",
+        cursor: "pointer",
+        background: drag ? "#fdf8f4" : "#faf7f4",
+        transition: "all 0.18s",
+        userSelect: "none",
+        position: "relative",
+      }}
+    >
+      {/* Camera icon circle */}
+      <div style={{
+        width: 60, height: 60,
+        borderRadius: "50%",
+        background: drag ? "#f0e8e0" : "#ede6dc",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        margin: "0 auto 20px",
+        fontSize: "1.6rem",
+        transition: "background 0.18s",
+      }}>
+        📷
       </div>
-      <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "0.85rem", color: "#9e8e7e" }}>
-        or click to browse — JPG, PNG, HEIC
+
+      <div style={{
+        fontFamily: "'Cormorant Garamond',serif",
+        fontSize: "1.45rem",
+        fontWeight: 600,
+        color: "#1a1208",
+        marginBottom: 8,
+        lineHeight: 1.2,
+      }}>
+        {drag ? "Drop to furnish" : "Drop your room photo here"}
       </div>
+
+      <div style={{
+        fontFamily: "'DM Sans',sans-serif",
+        fontSize: "0.82rem",
+        color: "#9e8e7e",
+        marginBottom: 18,
+      }}>
+        or <span style={{ color: "#b08d6e", textDecoration: "underline", textUnderlineOffset: 2 }}>browse files</span>
+      </div>
+
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12 }}>
+        {["JPG", "PNG", "HEIC"].map(fmt => (
+          <span key={fmt} style={{ fontSize:"0.66rem", color:"#b0a090", background:"#f0ebe5", padding:"2px 8px", borderRadius:100, fontFamily:"'DM Sans',sans-serif" }}>{fmt}</span>
+        ))}
+      </div>
+
       <input ref={ref} type="file" accept="image/*,image/heic,image/heif" style={{ display: "none" }} onChange={e => handle(e.target.files[0])} />
     </div>
   );

@@ -1,11 +1,11 @@
 import { useState } from "react";
 import Badge from "./Badge.jsx";
 
-export default function ListingPanel({ hotspot, onClose }) {
+export default function ListingPanel({ hotspot, onClose, onShuffle, shuffling }) {
   const [imgIdx, setImgIdx] = useState(0);
   if (!hotspot) return null;
 
-  const { listing, label, why, placement } = hotspot;
+  const { listing, label, why, placement, category, id: slotId } = hotspot;
   const price = listing.price > 0 ? `$${Math.round(listing.price / 100)}` : null;
   const images = listing.images || [];
   const hasImg = images.length > 0;
@@ -34,6 +34,18 @@ export default function ListingPanel({ hotspot, onClose }) {
           onClick={onClose}
           style={{ position:"absolute", top:12, right:12, width:32, height:32, borderRadius:"50%", background:"rgba(0,0,0,0.45)", backdropFilter:"blur(6px)", border:"none", color:"#fff", fontSize:"1rem", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}
         >×</button>
+
+        {/* Shuffle button */}
+        {onShuffle && (
+          <button
+            onClick={() => onShuffle(slotId, category)}
+            disabled={shuffling}
+            title="Try a different listing"
+            style={{ position:"absolute", top:12, right:52, width:32, height:32, borderRadius:"50%", background:"rgba(0,0,0,0.45)", backdropFilter:"blur(6px)", border:"none", color:"#fff", fontSize:"0.85rem", cursor: shuffling ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, opacity: shuffling ? 0.6 : 1, transition:"opacity 0.2s" }}
+          >
+            {shuffling ? <div style={{ width:12, height:12, border:"2px solid rgba(255,255,255,0.4)", borderTop:"2px solid #fff", borderRadius:"50%", animation:"spin 0.7s linear infinite" }} /> : "↻"}
+          </button>
+        )}
 
         {/* Image gallery dots */}
         {images.length > 1 && (
