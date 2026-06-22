@@ -4,12 +4,36 @@
 
 ---
 
-## See it in action
+## Demo
 
-### Room 1 — Minimalist living room (Los Angeles)
+### Desktop — full workflow
+https://github.com/KM101304/Furnish/raw/main/docs/demo_desktop.mp4
+
+[![Desktop demo](docs/demo_desktop_thumb.jpg)](docs/demo_desktop.mp4)
+
+*Upload → AI analysis → furnished render → click hotspots → see real listings → buy*
+
+---
+
+### Mobile — iPhone layout
+https://github.com/KM101304/Furnish/raw/main/docs/demo_mobile.mp4
+
+[![Mobile demo](docs/demo_mobile_thumb.jpg)](docs/demo_mobile.mp4)
+
+*Same flow on mobile — bottom sheet listing panel, touch-optimized hotspots*
+
+---
+
+## Before → After
+
+### Room 1 — Minimalist apartment (Los Angeles)
 ![Room 1 before and after](docs/demo_room1_compare.jpg)
 
 *Empty grey apartment → sectional sofa, coffee table, bookshelf, area rug — all real OfferUp listings*
+
+| Animated |
+|----------|
+| ![Room 1 GIF](docs/demo_room1.gif) |
 
 ---
 
@@ -18,13 +42,11 @@
 
 *Empty white room with dark floors → white sectional, media console, blue area rug, floor lamp — real secondhand listings*
 
+| Animated |
+|----------|
+| ![Room 2 GIF](docs/demo_room2.gif) |
+
 ---
-
-### Animated transforms
-
-| Room 1 | Room 2 |
-|--------|--------|
-| ![Room 1 GIF](docs/demo_room1.gif) | ![Room 2 GIF](docs/demo_room2.gif) |
 
 ---
 
