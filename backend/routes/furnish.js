@@ -1,9 +1,12 @@
 import { Router } from "express";
-import OpenAI from "openai";
+import { openai } from "../lib/openai.js";
 import { db } from "../db/index.js";
+import { requireAuth } from "../middleware/requireAuth.js";
+import { requireUsage } from "../middleware/requireUsage.js";
+import { saveAnalysis } from "../db/analyses.js";
+import { getUsageSummary } from "../db/users.js";
 
 export const furnishRouter = Router();
-const client = new OpenAI();
 
 const SYSTEM = `You are an interior design AI. Analyze the room photo(s) and return ONLY a JSON object with these keys:
 
@@ -32,7 +35,7 @@ const SYSTEM = `You are an interior design AI. Analyze the room photo(s) and ret
 
 Spread hotspots spatially across the image. Place rugs low-center, lamps in corners, sofas along walls.`;
 
-furnishRouter.post("/", async (req, res) => {
+furnishRouter.post("/", requireAuth, requireUsage, async (req, res) => {
   const { images, city } = req.body;
   if (!Array.isArray(images) || images.length === 0) {
     return res.status(400).json({ error: "images array required" });
@@ -44,7 +47,7 @@ furnishRouter.post("/", async (req, res) => {
   }));
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: "gpt-4o",
       max_tokens: 2048,
       response_format: { type: "json_object" },
@@ -65,7 +68,6 @@ furnishRouter.post("/", async (req, res) => {
 
     const data = JSON.parse(response.choices[0].message.content);
 
-    // Attempt to replace AI-generated listings with real DB listings
     if (Array.isArray(data.slots)) {
       for (const slot of data.slots) {
         const real = findRealListing(slot.category, city);
@@ -74,6 +76,21 @@ furnishRouter.post("/", async (req, res) => {
       }
     }
 
+    // Save to history (non-blocking — don't fail the request if this errors)
+    try {
+      const thumbUrl = images[0] ? `data:${images[0].mediaType};base64,${images[0].base64.slice(0, 100)}` : null;
+      const analysisId = saveAnalysis({
+        userId: req.user.id,
+        roomDescription: data.roomDescription,
+        styleTags: data.styleTags,
+        slots: data.slots,
+        city,
+        thumbUrl: images[0]?.previewUrl || null,
+      });
+      data._analysisId = analysisId;
+    } catch { /* ignore history errors */ }
+
+    data._usage = getUsageSummary(req.user);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -83,19 +100,13 @@ furnishRouter.post("/", async (req, res) => {
 function findRealListing(category, city) {
   if (!category) return null;
   try {
-    // 1. Prefer a city-matched listing with images
-    // 2. Fall back to any listing with images (ignore city — scraper data may be from other cities)
     const withImages = `images IS NOT NULL AND images != '[]'`;
     let row = city
       ? db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? AND (city LIKE ?) AND ${withImages} ORDER BY RANDOM() LIMIT 1`).get(category, `%${city}%`)
       : null;
 
-    if (!row) {
-      row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? AND ${withImages} ORDER BY RANDOM() LIMIT 1`).get(category);
-    }
-    if (!row) {
-      row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? ORDER BY RANDOM() LIMIT 1`).get(category);
-    }
+    if (!row) row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? AND ${withImages} ORDER BY RANDOM() LIMIT 1`).get(category);
+    if (!row) row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? ORDER BY RANDOM() LIMIT 1`).get(category);
     if (!row) return null;
 
     const h = row.posted_at ? Math.floor((Date.now() - new Date(row.posted_at)) / 3600000) : null;

@@ -36,4 +36,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_listings_category ON listings(category);
   CREATE INDEX IF NOT EXISTS idx_listings_city     ON listings(city);
   CREATE INDEX IF NOT EXISTS idx_listings_active   ON listings(active);
+
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    clerk_id      TEXT UNIQUE NOT NULL,
+    email         TEXT,
+    plan          TEXT NOT NULL DEFAULT 'free',
+    stripe_customer_id   TEXT,
+    stripe_subscription_id TEXT,
+    uses_this_month INTEGER NOT NULL DEFAULT 0,
+    period_reset_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-01', 'now', '+1 month')),
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_id);
+
+  CREATE TABLE IF NOT EXISTS analyses (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL REFERENCES users(id),
+    room_description TEXT,
+    style_tags    TEXT DEFAULT '[]',
+    slots         TEXT DEFAULT '[]',
+    rendered_url  TEXT,
+    city          TEXT,
+    thumb_url     TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id);
 `);
