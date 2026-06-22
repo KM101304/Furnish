@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useUser, useAuth, SignIn, SignUp, UserButton } from "@clerk/clerk-react";
 import UploadZone from "./components/UploadZone.jsx";
 import ListingPanel from "./components/ListingPanel.jsx";
@@ -47,7 +47,7 @@ const CSS = `
   .render-screen { display:flex; flex-direction:column; height:calc(100vh - 56px); height:calc(100dvh - 56px); overscroll-behavior:none; }
   .render-body { flex:1; display:flex; overflow:hidden; min-height:0; }
   .render-image-area { flex:1; min-width:0; position:relative; background:#1a1208; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-  .listing-panel { width:320px; flex-shrink:0; border-left:1px solid #ede6dc; overflow-y:auto; -webkit-overflow-scrolling:touch; animation:panelIn 0.22s ease; }
+  .listing-panel { width:340px; flex-shrink:0; border-left:1px solid #ede6dc; overflow-y:auto; -webkit-overflow-scrolling:touch; animation:panelIn 0.22s ease; }
   .room-photo { max-width:100%; display:block; object-fit:contain; max-height:calc(100vh - 210px); max-height:calc(100dvh - 210px); }
   .hotspot-btn { min-width:44px; min-height:44px; }
 
@@ -309,19 +309,20 @@ export default function App() {
       {/* Render screen */}
       {screen === "render" && roomData && (
         <div className="render-screen">
-          <div style={{ background:"#fff", borderBottom:"1px solid #ede6dc", padding:"8px 16px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-            {photos.slice(0, 2).map((img, i) => (
-              <img key={i} src={img.previewUrl} alt="" style={{ width:32, height:32, objectFit:"cover", borderRadius:5, flexShrink:0 }} />
-            ))}
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"0.9rem", fontWeight:600, color:"#1a1208", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                {roomData.roomDescription}
-              </div>
-              <div style={{ fontSize:"0.68rem", color:"#9e8e7e", marginTop:1 }}>
-                {(roomData.styleTags || []).join(" · ")}
-              </div>
+          <div style={{ background:"#fff", borderBottom:"1px solid #ede6dc", padding:"0 16px", height:48, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+            {/* Room thumb */}
+            {photos[0] && (
+              <img src={photos[0].previewUrl} alt="" style={{ width:30, height:30, objectFit:"cover", borderRadius:6, flexShrink:0, opacity:0.85 }} />
+            )}
+            {/* Style tags */}
+            <div style={{ flex:1, minWidth:0, display:"flex", gap:5, alignItems:"center", overflow:"hidden" }}>
+              {(roomData.styleTags || []).map(tag => (
+                <span key={tag} style={{ fontSize:"0.62rem", fontFamily:"'DM Sans',sans-serif", color:"#7a6a58", background:"#f5ede4", padding:"2px 8px", borderRadius:100, whiteSpace:"nowrap", flexShrink:0 }}>
+                  {tag}
+                </span>
+              ))}
             </div>
-            <button onClick={reset} style={{ background:"#f5ede4", border:"none", borderRadius:8, padding:"5px 12px", fontSize:"0.74rem", color:"#7a6a58", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", flexShrink:0 }}>
+            <button onClick={reset} style={{ background:"none", border:"1px solid #e0d8cf", borderRadius:8, padding:"5px 12px", fontSize:"0.73rem", color:"#7a6a58", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", flexShrink:0 }}>
               New room
             </button>
           </div>
@@ -342,7 +343,8 @@ export default function App() {
               <>
                 <div className="listing-panel-backdrop" onClick={() => setActiveId(null)} />
                 <div className="listing-panel">
-                  <ListingPanel hotspot={activeHotspot} onClose={() => setActiveId(null)} />
+                  {/* key resets internal imgIdx when hotspot changes */}
+                  <ListingPanel key={activeHotspot.id} hotspot={activeHotspot} onClose={() => setActiveId(null)} />
                 </div>
               </>
             )}
@@ -360,18 +362,97 @@ export default function App() {
 }
 
 function RoomRender({ photo, renderedUrl, rendering, slots, activeId, onHotspotClick }) {
+  const [sliderPct, setSliderPct] = useState(renderedUrl ? 55 : 100);
+  const [dragging, setDragging] = useState(false);
+  const containerRef = useRef(null);
+  const showSlider = !!renderedUrl && !rendering;
+
+  // When render arrives, animate slider from 100→55
+  useEffect(() => {
+    if (renderedUrl) {
+      setSliderPct(100);
+      const t = setTimeout(() => setSliderPct(55), 80);
+      return () => clearTimeout(t);
+    }
+  }, [renderedUrl]);
+
+  const onPointerMove = useCallback((e) => {
+    if (!dragging || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
+    setSliderPct(Math.max(5, Math.min(95, (x / rect.width) * 100)));
+  }, [dragging]);
+
+  const stopDrag = useCallback(() => setDragging(false), []);
+
   return (
-    <div style={{ position:"relative", lineHeight:0 }}>
+    <div
+      ref={containerRef}
+      style={{ position:"relative", lineHeight:0, userSelect:"none" }}
+      onMouseMove={onPointerMove}
+      onMouseUp={stopDrag}
+      onMouseLeave={stopDrag}
+      onTouchMove={e => { if (dragging) { e.preventDefault(); onPointerMove(e); } }}
+      onTouchEnd={stopDrag}
+    >
+      {/* Original photo (always underneath) */}
       <img src={photo?.previewUrl} alt="Your room" className="room-photo" />
 
+      {/* Rendered image clipped to left of slider */}
       {renderedUrl && (
-        <img
-          src={renderedUrl}
-          alt="Furnished room"
-          style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", animation:"fadeImg 1s ease" }}
-        />
+        <div style={{
+          position:"absolute", inset:0,
+          clipPath:`inset(0 ${100 - sliderPct}% 0 0)`,
+          transition: dragging ? "none" : "clip-path 0.6s cubic-bezier(0.4,0,0.2,1)",
+        }}>
+          <img
+            src={renderedUrl}
+            alt="Furnished room"
+            style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}
+          />
+        </div>
       )}
 
+      {/* Slider handle */}
+      {showSlider && (
+        <div
+          onMouseDown={() => setDragging(true)}
+          onTouchStart={() => setDragging(true)}
+          style={{
+            position:"absolute", top:0, bottom:0,
+            left:`${sliderPct}%`,
+            width:2,
+            background:"rgba(255,255,255,0.9)",
+            boxShadow:"0 0 0 1px rgba(0,0,0,0.15)",
+            cursor:"col-resize",
+            zIndex:25,
+            transition: dragging ? "none" : "left 0.6s cubic-bezier(0.4,0,0.2,1)",
+          }}
+        >
+          {/* Drag pill */}
+          <div style={{
+            position:"absolute", top:"50%", left:"50%",
+            transform:"translate(-50%,-50%)",
+            width:32, height:32, borderRadius:"50%",
+            background:"#fff",
+            boxShadow:"0 2px 12px rgba(0,0,0,0.25)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            gap:2,
+          }}>
+            <div style={{ fontSize:"0.6rem", color:"#b08d6e", fontFamily:"monospace", letterSpacing:-1 }}>◀▶</div>
+          </div>
+        </div>
+      )}
+
+      {/* Before/After labels */}
+      {showSlider && (
+        <>
+          <div style={{ position:"absolute", top:12, left:12, background:"rgba(26,18,8,0.6)", backdropFilter:"blur(4px)", color:"#e8d9c4", fontSize:"0.62rem", fontFamily:"'DM Sans',sans-serif", fontWeight:600, padding:"3px 10px", borderRadius:100, letterSpacing:"0.06em", pointerEvents:"none", zIndex:24 }}>BEFORE</div>
+          <div style={{ position:"absolute", top:12, right:12, background:"rgba(176,141,110,0.85)", backdropFilter:"blur(4px)", color:"#fff", fontSize:"0.62rem", fontFamily:"'DM Sans',sans-serif", fontWeight:600, padding:"3px 10px", borderRadius:100, letterSpacing:"0.06em", pointerEvents:"none", zIndex:24 }}>AFTER</div>
+        </>
+      )}
+
+      {/* Hotspot dots — on top of everything */}
       {slots.map((slot, i) => {
         const active = slot.id === activeId;
         return (
@@ -384,18 +465,20 @@ function RoomRender({ photo, renderedUrl, rendering, slots, activeId, onHotspotC
               position:"absolute",
               left:`${slot.x}%`, top:`${slot.y}%`,
               transform:"translate(-50%,-50%)",
-              width: active ? 38 : 32, height: active ? 38 : 32,
+              width: active ? 40 : 32, height: active ? 40 : 32,
               borderRadius:"50%",
-              background: active ? "#b08d6e" : "rgba(255,255,255,0.92)",
-              border:`2px solid ${active ? "#7a5c3a" : "rgba(0,0,0,0.2)"}`,
-              boxShadow: active ? "0 0 0 4px rgba(176,141,110,0.4)" : "0 2px 8px rgba(0,0,0,0.3)",
+              background: active ? "#b08d6e" : "rgba(255,255,255,0.95)",
+              border:`2px solid ${active ? "#7a5c3a" : "rgba(0,0,0,0.18)"}`,
+              boxShadow: active ? "0 0 0 5px rgba(176,141,110,0.35), 0 2px 10px rgba(0,0,0,0.3)" : "0 2px 8px rgba(0,0,0,0.25)",
               cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:"0.68rem", fontFamily:"'DM Sans',sans-serif", fontWeight:700,
-              color: active ? "#fff" : "#2c2016",
-              animation: active ? "none" : "pulse 2.4s ease-in-out infinite",
-              transition:"width 0.15s, height 0.15s, background 0.15s",
-              zIndex:20,
+              fontSize:"0.7rem", fontFamily:"'DM Sans',sans-serif", fontWeight:700,
+              color: active ? "#fff" : "#1a1208",
+              // Only pulse when not active and not dragging slider
+              animation: (active || dragging) ? "none" : "pulse 3s ease-in-out infinite",
+              animationDelay: `${i * 0.4}s`,
+              transition:"width 0.15s, height 0.15s, background 0.15s, box-shadow 0.15s",
+              zIndex:30,
             }}
           >
             {i + 1}
@@ -403,16 +486,18 @@ function RoomRender({ photo, renderedUrl, rendering, slots, activeId, onHotspotC
         );
       })}
 
+      {/* Rendering badge */}
       {rendering && (
-        <div style={{ position:"absolute", top:12, left:"50%", transform:"translateX(-50%)", background:"rgba(26,18,8,0.78)", color:"#e8d9c4", fontSize:"0.7rem", fontFamily:"'DM Sans',sans-serif", padding:"5px 14px", borderRadius:100, backdropFilter:"blur(6px)", display:"flex", alignItems:"center", gap:7, whiteSpace:"nowrap", zIndex:30 }}>
+        <div style={{ position:"absolute", top:12, left:"50%", transform:"translateX(-50%)", background:"rgba(26,18,8,0.78)", color:"#e8d9c4", fontSize:"0.7rem", fontFamily:"'DM Sans',sans-serif", padding:"6px 16px", borderRadius:100, backdropFilter:"blur(6px)", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap", zIndex:40 }}>
           <div style={{ width:9, height:9, border:"2px solid #b08d6e", borderTop:"2px solid transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite", flexShrink:0 }} />
-          Rendering furnished room…
+          Generating furnished render…
         </div>
       )}
 
-      {!activeId && !rendering && slots.length > 0 && (
-        <div style={{ position:"absolute", bottom:12, left:"50%", transform:"translateX(-50%)", background:"rgba(26,18,8,0.65)", color:"#e8d9c4", fontSize:"0.72rem", fontFamily:"'DM Sans',sans-serif", padding:"5px 14px", borderRadius:100, backdropFilter:"blur(6px)", pointerEvents:"none", whiteSpace:"nowrap", zIndex:30 }}>
-          Tap a dot to see the listing
+      {/* Hint */}
+      {!activeId && !rendering && !dragging && slots.length > 0 && (
+        <div style={{ position:"absolute", bottom:14, left:"50%", transform:"translateX(-50%)", background:"rgba(26,18,8,0.65)", color:"#e8d9c4", fontSize:"0.7rem", fontFamily:"'DM Sans',sans-serif", padding:"6px 16px", borderRadius:100, backdropFilter:"blur(6px)", pointerEvents:"none", whiteSpace:"nowrap", zIndex:35, display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{ fontSize:"0.8rem" }}>✦</span> Tap a number to see the listing
         </div>
       )}
     </div>

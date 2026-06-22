@@ -70,7 +70,7 @@ furnishRouter.post("/", requireAuth, requireUsage, async (req, res) => {
 
     if (Array.isArray(data.slots)) {
       for (const slot of data.slots) {
-        const real = findRealListing(slot.category, city);
+        const real = findRealListing(slot.category, city, data.styleTags || []);
         if (real) slot.listing = real;
         else if (slot.listing && city) slot.listing.city = city;
       }
@@ -97,17 +97,46 @@ furnishRouter.post("/", requireAuth, requireUsage, async (req, res) => {
   }
 });
 
-function findRealListing(category, city) {
+function findRealListing(category, city, styleTags = []) {
   if (!category) return null;
   try {
-    const withImages = `images IS NOT NULL AND images != '[]'`;
-    let row = city
-      ? db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? AND (city LIKE ?) AND ${withImages} ORDER BY RANDOM() LIMIT 1`).get(category, `%${city}%`)
-      : null;
+    const withImages = `images IS NOT NULL AND images != '[]' AND json_array_length(images) > 0`;
 
-    if (!row) row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? AND ${withImages} ORDER BY RANDOM() LIMIT 1`).get(category);
-    if (!row) row = db.prepare(`SELECT * FROM listings WHERE active=1 AND category=? ORDER BY RANDOM() LIMIT 1`).get(category);
-    if (!row) return null;
+    // Build candidates pool — prefer city match, fall back to any city
+    let candidates = [];
+
+    if (city) {
+      candidates = db.prepare(
+        `SELECT * FROM listings WHERE active=1 AND category=? AND city LIKE ? AND ${withImages} ORDER BY scraped_at DESC LIMIT 40`
+      ).all(category, `%${city}%`);
+    }
+
+    if (candidates.length < 8) {
+      const extra = db.prepare(
+        `SELECT * FROM listings WHERE active=1 AND category=? AND ${withImages} ORDER BY scraped_at DESC LIMIT 60`
+      ).all(category);
+      const existingIds = new Set(candidates.map(r => r.external_id));
+      candidates.push(...extra.filter(r => !existingIds.has(r.external_id)));
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Score: +2 per matching style tag, +1 for having multiple images, +0.5 for description
+    const scored = candidates.map(row => {
+      const tags = JSON.parse(row.style_tags || "[]");
+      const imgs = JSON.parse(row.images || "[]");
+      let score = styleTags.filter(t => tags.includes(t)).length * 2;
+      if (imgs.length > 1) score += 1;
+      if (row.description && row.description.length > 20) score += 0.5;
+      // small random jitter so equivalent scores don't always pick same item
+      score += Math.random() * 0.4;
+      return { row, score, imgs };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    // Pick from top 5 to add variety
+    const pick = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
+    const { row, imgs } = pick;
 
     const h = row.posted_at ? Math.floor((Date.now() - new Date(row.posted_at)) / 3600000) : null;
     return {
@@ -118,7 +147,7 @@ function findRealListing(category, city) {
       condition: row.condition || "Good",
       city: city || row.city || "",
       postedAgo: h == null ? "recently" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`,
-      images: JSON.parse(row.images || "[]"),
+      images: imgs,
       listing_url: row.listing_url,
     };
   } catch {

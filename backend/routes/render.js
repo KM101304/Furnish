@@ -32,16 +32,16 @@ renderRouter.post("/", requireAuth, async (req, res) => {
     }
 
     const refLines = itemRefs.map((r, i) =>
-      `Image ${i + 2} is a "${r.label}" — place it ${r.placement}.`
+      `Image ${i + 2}: a "${r.label}" — reproduce its exact color, material, and shape, place it ${r.placement}.`
     ).join(" ");
 
     const prompt =
-      `Image 1 is the empty room to furnish. ` +
+      `Image 1 is the empty room. ` +
       (refLines ? refLines + " " : "") +
-      `Furnish the room with all these specific items, using the reference photos to match their exact appearance, color, and material. ` +
-      `Style: ${style}. ` +
-      `Preserve the room's original floors, walls, windows, ceiling, and proportions exactly. ` +
-      `Photorealistic interior photography with warm natural lighting.`;
+      `Place every referenced furniture item into the room, faithfully reproducing each item's exact color, texture, and silhouette as shown in its reference photo. ` +
+      `Do not substitute or invent furniture — use only what the reference images show. ` +
+      `Preserve the room's original architecture: floors, walls, windows, ceiling height, and natural light direction. ` +
+      `Style: ${style}. Photorealistic interior photography, 50mm lens, soft natural light.`;
 
     const allImages = [roomFile, ...itemRefs.map(r => r.file)];
 
